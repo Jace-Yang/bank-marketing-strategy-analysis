@@ -1,0 +1,268 @@
+---
+title: "Desafio Data Science"
+author: "Antonio Prado"
+date: "October 31, 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Análise do dataset
+
+#### Carregando dados:
+
+```{r}
+bank_data <- read.csv("bank-full.csv", sep = ";")
+
+```
+
+#### Verificando as dimensões dos dados:
+```{r}
+dim(bank_data)
+```
+
+Pelo número de entradas, 45211, podemos perceber que esse banco de dados está relacionado com os dados após a terceira iteração do método CRISP-DM realizada no artigo "USING DATA MINING FOR BANK DIRECT MARKETING: AN APPLICATION OF THE CRISP-DM METHODOLOGY", disponível em <http://hdl.handle.net/1822/14838>. Nesse dataset, como descrito no arquivo "bank-names.txt", não há instâncias com atributos faltantes e alguns atributos foram suprimidos.
+
+Vemos que o problema original é um problema de classificação com variáveis mistas, embora as questões específicas do desafio possam representar problemas diferentes.
+
+
+## Preparação do ambiente
+
+#### Instalando pacotes
+
+Utilizamos a biblioteca caret para algumas tarefas básicas, bem como outras bibliotecas para treinamentos específicos:
+```{r, eval=FALSE}
+install.packages("caret")
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("stats")
+```
+
+#### Carregando bibliotecas
+
+```{r, message=FALSE}
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(stats)
+```
+
+## Questões
+
+#### 1. Qual profissão tem mais tendência a fazer um empréstimo? De qual tipo?
+
+Pelo dataset, encontramos dois tipos diferentes de empréstimos, listados como variáveis categóricas (cada cliente possui ou não possui tal tipo de empréstimo). O primeiro deles, "housing", indica se o cliente possui empréstimo imobiliário, enquanto o segundo, "loan", indica se o cliente possui empréstimo pessoal.
+
+
+Contagem de clientes por tipo de trabalho:
+```{r}
+ggplot(bank_data, aes(x=bank_data$job )) + geom_bar() +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+```{r}
+plyr::count(bank_data, "job")
+```
+
+<!--
+```{r}
+has_loan_data  <- subset(bank_data, housing=="yes" | loan=="yes", select=c(job, housing, loan))
+ggplot(has_loan_data, aes(x=has_loan_data$job )) + geom_bar() + theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+-->
+Contagem de clientes que possuem algum tipo de empréstimo:
+```{r}
+has_loan_data  <- subset(bank_data, housing=="yes" | loan=="yes", select=c(job, housing, loan))
+ggplot(has_loan_data, aes(x=has_loan_data$job )) + geom_bar() +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+```{r}
+plyr::count(has_loan_data, "job")
+```
+
+Proporção de clientes que possuem algum tipo de empréstimo, para cada trabalho:
+```{r calc-total-loan}
+has_loan_data <- mutate(bank_data, any_loan = ifelse(loan=="yes", "yes", ifelse(housing=="yes", "yes", "no")))
+ggplot(has_loan_data, aes(x=has_loan_data$job, fill = any_loan)) + 
+    geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+Mais especificamente, para os trabalhadores com maior proporção de empréstimos, temos:
+```{r}
+bc_loan_proportion = sum(has_loan_data$any_loan=="yes" & has_loan_data$job=="blue-collar") /
+    sum(has_loan_data$job=="blue-collar")
+bc_loan_proportion
+```
+
+Olhando para o tipo de empréstimos, temos:
+```{r}
+bc_loan_housing = sum(has_loan_data$housing=="yes" & has_loan_data$job=="blue-collar") /
+    sum(has_loan_data$any_loan=="yes" & has_loan_data$job=="blue-collar")
+bc_loan_housing
+```
+
+```{r}
+bc_loan_loan = sum(has_loan_data$loan=="yes" & has_loan_data$job=="blue-collar") /
+    sum(has_loan_data$any_loan=="yes" & has_loan_data$job=="blue-collar")
+bc_loan_loan
+```
+
+Esses resultados nos mostram que, no espaço dos clientes do banco em questão, os chamados trabalhadores "blue-collar" são os que possuem maior tendência a possuírem empréstimos (78%), sendo que, dos que possuem algum empréstimo, aproximadamente 93% deles possuem um empréstimo imobiliário e 22% deles possuem um empréstimo pessoal.
+
+#### 2. Fazendo uma relação entre número de contatos e sucesso da campanha quais são os pontos relevantes a serem observados?
+
+Analisando os dados, considerando que o sucesso da campanha se refere à campanha atual, isto é, a variável y do dataset.
+Fazendo uma contagem preliminar da freqência absoluta do número de contatos, nessa campanha e em campanhas anteriores:
+```{r}
+contacts_data <- bank_data[, c(13, 15, 17)]
+contacts_campaign <- plyr::count(contacts_data, "campaign")
+contacts_previous <- plyr::count(contacts_data, "previous")
+plyr::count(contacts_data, "campaign")
+plyr::count(contacts_data, "previous")
+```
+
+
+```{r}
+range <- (1:10)
+lista1 <- (1:10)
+lista2 <- (1:10)
+lista_campaign <- (1:10)
+lista_previous <- (1:10)
+for (x in range){
+    lista1[x] <- sum(contacts_data$campaign==(5*x)-5 | contacts_data$campaign==(5*x)-4 | contacts_data$campaign==(5*x)-3 | contacts_data$campaign==(5*x)-2 | contacts_data$campaign==(5*x)-1)
+    lista2[x] <- sum((contacts_data$campaign==(5*x)-5 | contacts_data$campaign==(5*x)-4 | contacts_data$campaign==(5*x)-3 | contacts_data$campaign==(5*x)-2 | contacts_data$campaign==(5*x)-2) & contacts_data$y=="yes")
+    lista_campaign[x] <- lista2[x]/lista1[x]
+}
+for (x in range){
+    lista1[x] <- sum((contacts_data$previous==(5*x)-5 | contacts_data$previous==(5*x)-4 | contacts_data$previous==(5*x)-3 | contacts_data$previous==(5*x)-2 | contacts_data$previous==(5*x)-1) & contacts_data$previous>=1)
+    lista2[x] <- sum((contacts_data$previous==(5*x)-5 | contacts_data$previous==(5*x)-4 | contacts_data$previous==(5*x)-3 | contacts_data$previous==(5*x)-1 | contacts_data$previous==(5*x)-1) & contacts_data$y=="yes" & contacts_data$previous>=1)
+    lista_previous[x] <- lista2[x]/lista1[x]
+}
+
+ggplot(data.frame(range),aes((range*5)-2.5,lista_campaign))+geom_bar(stat="identity") + xlim(0, 50) + labs(x = "Contatos Campanha", y = "Proporção Outcome 'Yes'")
+ggplot(data.frame(range),aes((range*5)-2.5,lista_previous))+geom_bar(stat="identity") + xlim(0, 50) + labs(x = "Contatos Campanha Anterior", y = "Proporção Outcome 'Yes'")
+```
+
+Devido ao grande número de possíveis contatos, o que dificultava a análise, nos gráficos acima eles foram agrupados em compartimentos de tamanho cinco e calculada a proporção de sucesso de cada compartimento. No primeiro gráfico todos os clientes foram considerados. No segundo, apenas os que já haviam sido contatados anteriormente.
+Podemos ver que a porporção de sucessos da campanha atual cai com o aumento do número de contatos. O que não quer dizer que haja uma relação causal nesse sentido, um possível cliente mais indeciso potencialmente pode receber mais ligações, mesmo que sua probabilidade de assinar o plano fosse baixa desde o início.
+Para campanhas anteriores, o número de contatos não parece ter uma relação muito clara com o sucesso da campanha atual. Apesar disso, podemos perceber que a taxa de adesão da campanha atual, considerando os clientes que haviam sido contatados ateriormente, é significativamente maior (23%) que a taxa de adesão geral (11%):
+
+```{r}
+plyr::count(contacts_data$previous>=1)
+plyr::count(contacts_data$previous>=1 & contacts_data$y=="yes")
+1905 / 8257
+
+plyr::count(contacts_data$campaign>=1)
+plyr::count(contacts_data$campaign>=1 & contacts_data$y=="yes")
+5289 / 45211
+```
+
+#### 3. Baseando-se nos resultados de adesão desta campanha qual o número médio e o máximo de ligações que você indica para otimizar a adesão?
+
+Considerando os gráficos da questão anterior, que exibiam a taxa de sucesso da campanha considerando todos os clientes e apenas os contactados anteriormente, pudemos perceber que em ambos os casos a taxa de sucesso caía bastante para clientes com número de contatos acima de 15, 20. Considerando também que campanhas com maior número de ligações tendem a ser mais caras, eu indicaria um máximo de 15 ligações, e uma média entre 5 e 10 ligações para cada cliente.
+
+#### 4. O resultado da campanha anterior tem relevância na campanha atual?
+
+Para determinar a relevância do resultado anterior podemos verificar se as duas variáveis são independentes. Isto é, se o conhecimento sobre o valor da variável "poutcome" modifica a probabilidade esperada do valor da variável "y". Como ambas as variáveis são categóricas, podemos utilizar o teste qui-quadrado de Pearson, incluso na biblioteca stats. Nossa hipótese nula será de que as duas variáveis são independentes, e a nossa hipótese alternativa de que elas são dependentes entre si.
+
+```{r}
+chisq.test(bank_data$poutcome, bank_data$y)
+```
+De acordo com a documentação do dataset, a variável "poutcome" pode assumir quatro valores: "unknown","other","failure","success". Caso quiséssemos trabalhar com apenas dois valores possíveis, por exemplo, poderíamos agrupar "unknown","other" e "failure" em um único valor, deixando "success" para o restante, e aplicar o teste novamente:
+
+```{r}
+bank_outcome <- bank_data %>%
+  mutate(poutcome2 = (poutcome=="success"))
+
+chisq.test(bank_outcome$poutcome2, bank_outcome$y)
+```
+
+O resultado de ambos os testes nos revelou um p-value consideravelmente baixo, de 2.2 * 10^(-16). A partir desse valor podemos com confiança rejeitar a hipótese nula em favor da hipótese alternativa, isto é, o resultado da campanha anterior tem relevância ao predizermos o resultado da campanha atual.
+
+
+#### 5. Qual o fator determinante para que o banco exija um seguro de crédito?
+
+Não sei se entendi muito bem essa pergunta... O dataset em questão se refere a se clientes realizarão depósitos a prazo no banco, então não vejo a necessidade de seguro de crédito por parte do banco. Caso a pergunta seja mais geral, acredito que as variáveis "loan", "housing" e "default" possam ter relação com a necessidade de seguro. Dessas variáveis, "default" provavelmente seria a mais relevante, pois indica a inadimplência do cliente com relação a outros créditos.
+
+#### 6. Quais são as características mais proeminentes de um cliente que possua empréstimo imobiliário?
+
+Podemos separar o dataset em dois grupos, sendo um dele possuidor de crédito imobiliário e outro não possuidor, de forma a podermos extrair atributos dos dois grupos e compará-los.
+
+```{r}
+has_housing <- bank_data[ which(bank_data$housing=="yes"), ]
+not_housing <- bank_data[ which(bank_data$housing=="no"), ]
+```
+
+O dataset original contém 8 atributos para os clientes. Removendo-se o atributo housing, que foi utilizado para a separação dos grupos, ficamos com: age (numérico), job (categórico), marital (categórico), education (categórico), default (categórico), balance (numérico) e loan (categórico). Podemos verificar individualmente cada um deles, em busca de anomalias.
+
+Primeiro os atributos numéricos:
+
+```{r}
+hist(has_housing$age)
+mean(has_housing$age)
+median(has_housing$age)
+hist(not_housing$age)
+mean(not_housing$age)
+median(not_housing$age)
+
+hist(has_housing$balance)
+mean(has_housing$balance)
+median(has_housing$balance)
+hist(not_housing$balance)
+mean(not_housing$balance)
+median(not_housing$balance)
+```
+
+Pelos dados acima, podemos ver que os clientes que possuem empréstimo imobiliário são um pouco mais novos que os que não possuem, mas a diferença é pequena.
+
+A diferença no saldo médio da conta é um pouco mais pronunciada, com os clientes que não possuem empréstimos imobiliarios contando com maior saldo.
+
+Quanto aos atributos categóricos:
+
+
+```{r}
+
+ggplot(has_housing, aes(x=has_housing$job )) + geom_bar() +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(not_housing, aes(x=not_housing$job )) + geom_bar() +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(has_housing, aes(x=has_housing$marital )) + geom_bar()
+
+ggplot(not_housing, aes(x=not_housing$marital )) + geom_bar()
+
+ggplot(has_housing, aes(x=has_housing$education )) + geom_bar()
+
+ggplot(not_housing, aes(x=not_housing$education )) + geom_bar()
+
+ggplot(has_housing, aes(x=has_housing$default )) + geom_bar()
+
+ggplot(not_housing, aes(x=not_housing$default )) + geom_bar()
+
+ggplot(has_housing, aes(x=has_housing$loan )) + geom_bar()
+
+ggplot(not_housing, aes(x=not_housing$loan )) + geom_bar()
+```
+
+Pelos dados acima, podemos notar que as variáveis loan, default e marital não apresentam comportamento distinto quando consideramos os dois grupos, mantendo-se aproximadamente as mesmas proporções.
+
+A variável education apresenta uma diferença mais visível, a proporção de clientes com o terceiro grau (educação) é maior dentre os que não possuem um empréstimo imobiliário.
+
+A diferença mais marcante, no entanto, encontra-se na comparação dos trabalhos dos dois grupos. Esse resultado já era parcialmente esperado, dado os resultados da questão 1 (e levando-se em consideração que os empréstimos imobiliários representam a maior parte do total de empréstimos). Pode-se perceber que as ocupações "management" e "retired" ocupam frações mais significativas do grupo dos que não possuem empréstimos imobiliários (em comparação com suas proporções no grupo dos que possuem empréstimos imobiliários), enquanto a ocupação "blue-collar" ocupa uma fração mais significativa do grupo que possue tais empréstimos.
+
+Tomando um pouco de liberdade, poderíamos dizer que o cliente padrão que possui empréstimo imobiliário seria um trabalhador "blue-collar", com por volta de 40 anos, casado, que estudou até o segundo grau e que não possui outros empréstimos.
+
+
+
+
+
+## Referências
+
+USING DATA MINING FOR BANK DIRECT MARKETING: AN APPLICATION OF THE CRISP-DM METHODOLOGY: http://hdl.handle.net/1822/14838
+
+https://archive.ics.uci.edu/ml/datasets/Bank+Marketing
