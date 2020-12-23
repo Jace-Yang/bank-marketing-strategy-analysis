@@ -1,0 +1,907 @@
+---
+title: "Data Processing Scheme"
+author: "YJH"
+date: "11/20/2020"
+output: html_document
+---
+- Please use R version of 3.6.1 (2019-07-05)
+
+# Data scheme
+
+```{r}
+# Install and library the packages
+
+## For data processing
+if(!require("magrittr")) install.packages("magrittr")
+if(!require("readr")) install.packages("readr")
+if(!require("dplyr")) install.packages("dplyr")
+if(!require("tidyr")) install.packages("tidyr")
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("openxlsx")) install.packages("openxlsx")
+
+## For visulization
+if(!require("purrr")) install.packages("purrr")
+if(!require("stringr")) install.packages("stringr")
+if(!require("ggplot2")) install.packages("ggplot2")
+if(!require("cowplot")) install.packages("cowplot")
+if(!require("caret")) install.packages("caret")
+if(!require("cowplot")) install.packages("cowplot")
+if(!require("corrplot")) install.packages("corrplot")
+if(!require("DALEX")) install.packages("DALEX")
+if(!require("DescTools")) install.packages("DescTools")
+if(!require("doParallel")) install.packages("doParallel")
+if(!require("GGally")) install.packages("GGally")
+if(!require("Rmisc")) install.packages("Rmisc")
+if(!require("PupillometryR")) install.packages("PupillometryR")
+if(!require("inspectdf")) install.packages("inspectdf")
+if(!require("vcd")) install.packages("vcd")
+if(!require("ggpubr")) install.packages("ggpubr")
+if(!require("ggmosaic")) install.packages("ggmosaic")
+if(!require("scales")) install.packages("scales")
+if(!require("ggridges")) install.packages("ggridges")
+if(!require("viridis")) install.packages("viridis")
+
+## For missing value handle
+if(!require("lattice")) install.packages("lattice")
+if(!require("MASS")) install.packages("MASS")
+if(!require("nnet")) install.packages("nnet")
+if(!require("mice")) install.packages("mice")
+if(!require("missForest")) install.packages("missForest")
+
+# Avoid package conflict
+select <- dplyr::select
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+summarize <- dplyr::summarize
+
+# Data Input
+## Please run setwd("~/yourdir/bank-marketing-strategy-analysis/code") (change yourdir to yours).
+## Then, all the file dictionary work.
+bank <- read_delim("../data/origin/bank-additional/bank-additional-full.csv", ";", 
+                   escape_double = FALSE, trim_ws = TRUE)
+
+# Plotting theme
+text_theme = theme(
+                plot.title = element_text(face="bold",
+                                          hjust = 0.5,
+                                          size = 16),
+                plot.subtitle = element_text(face="bold", 
+                                             hjust = 0.5,
+                                             size = 4,
+                                             margin = c(t = 13, r = 0, b = 17, l = 0)),
+                axis.title = element_text(size=14),
+                legend.title = element_text(size=14))
+
+colors <- c("#E69F00", "#56B4E9", "#009E73","#d9a99e",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7",
+          "#F4EDCA",  "#9a3820",  "#a7a97c")
+```
+
+## Data Description
+```{r}
+get_range <- function(var, data=bank){
+  target = data %>% distinct(!!sym(var)) %>% pull(1)
+  
+  if(is.numeric(target) | is.integer(target)){
+    str1 = paste(range(target), collapse=", ")
+    return(paste0("[",str1,"]"))} 
+  else{
+    str1 = paste(target,collapse = "、")
+    str2 = paste0("等",length(target),"类取值")
+    return(paste0(str1,str2))} }
+
+get_type <- function(var, data=bank){
+  target = data %>% distinct(!!sym(var)) %>% pull(1)
+  
+  if(is.numeric(target) | is.integer(target)){
+    return("连续")} 
+  else{
+    return("离散")} }
+
+# Glimpse data and output the descriptions
+my_glimpse = function(data = bank, file=F){
+  
+  temp = tibble("变量符号" = data %>% colnames)
+
+  if(file==F){
+    
+    temp %<>%
+    rowwise() %>%
+    transmute(变量符号,
+                类型 = get_type(变量符号),
+                取值范围 = get_range(变量符号))
+    return(temp)
+  }else{
+    temp = tibble("变量符号" = data %>% colnames)
+    temp %<>%
+    rowwise() %>%
+    transmute(变量分类=NA,
+                变量名称 = NA,
+                变量符号,
+                类型 = get_type(变量符号),
+                变量含义=NA,
+                取值范围 = get_range(变量符号)) 
+    write.xlsx(temp,file)
+    return(temp)
+    }
+}
+
+my_glimpse(file = "../tables/part2/data_report.xlsx")
+```
+
+### Discrete variables
+```{r}
+if_plot = F # Switch upon plotting+data processing or only data processing.
+if(if_plot){
+  inspect_cat(bank, show_plot = TRUE)}
+```
+
+### Continuous variables
+```{r}
+# Single Plot
+if(if_plot){
+bank %>% keep(is.numeric) %>% colnames -> temp
+bank %>%
+  select(c(y,temp)) %>%
+  pivot_longer(temp,'key',values_to = 'value') %>%
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free", ncol=5,nrow=2) +
+    geom_histogram(aes(fill=y)) +
+  theme(axis.text.x = element_text(angle = -45, vjust = 0.5),legend.position = "bottom") +
+    scale_fill_manual("Result", values =colors,na.value = "#5f5f5f") +
+  
+    labs(x=NULL,y=NULL) #+ theme_pubr()
+
+# Pair Plot
+my_cor = function(data, mapping, alignPercent = 0.6, method = "pearson", 
+    use = "complete.obs", corAlignPercent = NULL, corMethod = NULL, 
+    corUse = NULL, ...) {
+  return(GGally::ggally_cor(data, mapping)+theme(panel.grid.minor = element_blank(), 
+        panel.grid.major = element_blank())) 
+}
+
+smooth <- function(data, mapping, method = "loess",formula = 'y ~ x', ...) {
+  p <- ggplot(data = data, mapping = mapping) +
+    geom_point(...,alpha=0.14) +
+    geom_smooth(...,method = method,formula = formula,size = 1,...)
+  
+  p
+}
+smooth_lm <- function(data, mapping, method = "lm",formula = 'y ~ x', ...) {
+  p <- ggplot(data = data, mapping = mapping) +
+    geom_point(...,alpha=0.14) +
+    geom_smooth(...,method = method,formula = formula,size = 1,...)
+  p
+}
+
+bank %>% select(where(is.numeric)) %>% colnames -> numeric_vars
+bank %>% select(c("y", numeric_vars)) %>%
+  ggpairs(aes(color=y),
+            upper = list(continuous = smooth_lm,
+                         combo = "dot", 
+                         discrete = "box", 
+                         na = "na"),
+            lower = list(continuous = my_cor, 
+                         combo = "box_no_facet", 
+                         discrete = "facetbar", 
+                         na = "na"),switch="y",cardinality_threshold = 16) -> p
+}
+```
+
+## Data Cleaning
+### Remove repeated data
+```{r}
+# Detact lines repeated
+#View(bank %>% group_by_at(colnames(.)) %>% filter(n()>1)) #12 lines are unusally repeated, given the rear chances.
+bank %<>% unique
+```
+
+### Data Wrangling
+```{r}
+# unknown to na
+## Detact
+treat_temp = c()
+for(i in colnames(bank)){
+  if("unknown" %in% (bank %>% distinct_at(i) %>% pull(1))){
+    treat_temp %<>% append(i)
+  }
+}
+print("unknown:")
+print(paste0(treat_temp,collapse = "、"))
+
+## Replace
+bank %<>% mutate_at(
+  vars(treat_temp), 
+  funs(str_replace(., c("unknown"), NA_character_)))
+
+# Unify data type
+unify_type <- function(df){
+  df %>%
+    # discreate as factor
+    mutate_if(sapply(df, is.character), as.factor) %>%
+    # continuous as numeric
+    mutate_if(sapply(df, is.integer), as.numeric)
+}
+bank %<>% unify_type
+
+# Replace 999 pdays as NA
+bank %<>% mutate(pdays= ifelse(pdays==999,NA,pdays))
+
+# Replace yes/no with 0/1
+## Detact yes/no only
+yesno_to_10 <- function(df){
+  treat_temp = c()
+  for(i in colnames(df)){
+    if("yes" %in% (df %>% distinct_at(i) %>% pull(1))){
+      treat_temp %<>% append(i)
+    }
+  }
+  # yes/no换成0/1
+  df %>%
+    mutate_at(treat_temp,
+              ~case_when(. %in% "yes" ~ 1, . %in% "no" ~ 0)) %>%
+    unify_type
+}
+```
+
+
+## EDA and feature engineering
+- Helping function
+```{r}
+glimpsedata <- function(){
+  return(glimpse(bank))
+}
+
+if_plot = F
+save_plot = F
+
+eda_cata <- function(group, data=bank){
+  print(table(bank %>% dplyr::select(!!sym(group)),useNA="ifany"))
+  group = group
+  if(if_plot){
+  layout <- matrix(c(1,1,1,1,4,4,4,0,0,
+                     1,1,1,1,4,4,4,3,3,
+                     2,2,2,2,4,4,4,3,3,
+                     2,2,2,2,4,4,4,0,0), nrow = 4, byrow=TRUE)
+    # plot1
+     data %>% 
+      ggplot(aes(x = !!sym(group), 
+                 fill = factor(y))) + 
+      geom_bar(position = "stack") -> p1
+    
+    # plot 2
+    data %>% 
+      ggplot(aes(x = !!sym(group), 
+             fill = factor(y))) + 
+    geom_bar(position = "fill") -> p2
+    
+    # plot3
+    data %>%
+      dplyr::select(temp = !!sym(group)) %>%
+      group_by(temp) %>%
+      dplyr::summarise(percent = n()) %>% ungroup %>%
+      mutate(percent = percent/sum(percent)) %>%
+      
+      ggplot(aes(x="", y = percent, fill = temp)) +
+      geom_bar(width = 1, stat = 'identity') +
+      coord_polar("y", direction = -1) +
+      theme_void()+ ylab(group) +
+      geom_text(aes(label = percent),
+                position = position_stack(vjust=0.5)) +
+      scale_fill_discrete(name=group) -> p3
+    
+    # plot 4
+    data %>%
+      dplyr::select(temp = !!sym(group),y) %>%
+      group_by(temp,y) %>%
+      dplyr::summarise(percent = n()) %>% 
+      group_by(y) %>%
+      dplyr::summarise(temp=temp,percent = percent/sum(percent))  %>%
+    
+    ggplot(aes(x = y, y = percent, fill = temp, label = temp)) +
+      geom_bar(stat = "identity") + ylab(group) +
+      geom_text(position = position_stack(vjust=0.5)) -> p4
+ 
+  
+    multiplot(p1,p2,p3,p4,layout=layout)
+  }
+    
+  if(save_plot){
+    png(paste0("../images/每个变量与Y/",group,"_分类型图.png"),width=1500,height=485)
+    multiplot(p1,p2,p3,p4,layout=layout)
+    dev.off()
+  }
+}
+
+eda_num <- function(var,data=bank){
+  if(if_plot){
+  ggplot(data = data, 
+       aes(x = factor(y), y = !!sym(var))) + #
+  geom_flat_violin(aes(fill = factor(y)),
+                   position = position_nudge(x = .2, y = 0), 
+                   trim = TRUE, 
+                   alpha = .4, 
+                   scale = "width") +
+  geom_point(aes(y = !!sym(var), color = factor(y)), 
+             position = position_jitter(w = .15, h = 0.000000000002), 
+             size = .001, 
+             alpha = 0.4) +
+  geom_boxplot(width = .3, 
+               outlier.shape = NA,
+               alpha = 0.5) +
+  labs(x="Result") + 
+  coord_flip() +
+  scale_fill_manual(c("fail", "success"), values =colors,na.value = "#5f5f5f") +
+  scale_color_manual(c("fail", "success"), values =colors,na.value = "#5f5f5f") +
+  
+  expand_limits(x = 3) +
+      theme_pubr()-> p
+  
+   #print(p)
+   return(p)
+  }
+  if(save_plot){
+    ggsave(plot = p, filename = paste0("../images/X-withY/",var,"_continuous.png"),width=15,height=4.85)
+  }
+}
+
+eda_cata_num <- function(group, var, data=bank,flip = F,expand_limits=5.2, x_angle = 45){
+  plot =NA
+  if(if_plot){
+  ggplot(data = bank, 
+       aes(x = as.factor(!!sym(group)), y = !!sym(var), fill = y)) + #
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), 
+                   trim = TRUE, 
+                   alpha = .4, 
+                   scale = "width") +
+  geom_point(aes(y = !!sym(var), color = factor(y)), 
+             position = position_jitter(width = .15), 
+             size = .5, 
+             alpha = 0.1) +
+  geom_boxplot(width = .3, 
+               outlier.shape = NA,
+               alpha = 0.5) +
+  expand_limits(x = expand_limits) +
+  labs(x = group, y = var) +
+  guides(color=NULL, fill=guide_legend(title="Result:")) +
+  scale_fill_manual(#c("fail", "success"), 
+                           values =colors,na.value = "#5f5f5f")+
+  scale_color_manual(#c("fail", "success"), 
+                     values =colors,na.value = "#5f5f5f")+
+  guides(color=NULL) +
+  theme_pubr(base_size = 11, x.text.angle = x_angle) -> plot
+  if(flip){
+    plot = plot + coord_flip()
+  }
+  return(plot)
+  }
+}
+see = function(data){
+  View(data)
+}
+
+eda_withy <- function(var, data = bank, flip=F){
+  plot = NA
+  if(if_plot){
+  if(is.numeric(data %>% dplyr::select(!!sym(var)) %>%pull(1))){
+      data %>%
+        mutate(y = factor(y)) %>%
+      
+      ggplot(aes(x = as.factor(y), y = !!sym(var))) + #
+          geom_flat_violin(position = position_nudge(x = .2, y = 0), 
+                           trim = TRUE, 
+                           alpha = .4, 
+                           scale = "width") +
+          geom_point(aes(y = !!sym(var), color = as.factor(y)), 
+                     position = position_jitter(w = .15, h = 0.000000000002), 
+                     size = .001, 
+                     alpha = 0.4) +
+          geom_boxplot(width = .3, 
+                       outlier.shape = NA,
+                       alpha = 0.5) +
+          scale_x_discrete("Result", labels = c("yes" = "success", "no" = "fail")) +
+          scale_color_manual(labels = c("success", "fail"),values =colors[1:2]) +
+          labs(color = "Result") +
+          #coord_flip() +
+          theme(legend.position = "none")+
+          expand_limits(x = 3) + text_theme -> plot
+
+  }
+  if(is.factor(data %>% dplyr::select(!!sym(var)) %>% pull(1))){
+  
+      data %>%
+        dplyr::select(temp = !!sym(var),y) %>%
+        group_by(temp,y) %>%
+        dplyr::summarise(percent = n()) %>% 
+        group_by(y) %>%
+        dplyr::summarise(temp=temp,percent = percent/sum(percent))  %>%
+        mutate(y = factor(y)) %>%
+      
+      ggplot(aes(x = y, y = percent, fill = temp, label = temp)) +
+        geom_bar(stat = "identity") + xlab(var) + ylab(paste0("% of ",var)) +
+        scale_x_discrete("y", labels = c("yes" = "sucess", "no" = "fail")) +
+        scale_y_continuous(labels = function(x) paste0(x*100, "%")) +
+        scale_fill_manual(values =colors,na.value = "#5f5f5f") +
+        guides(fill=guide_legend(title=var))+
+        geom_text(position = position_stack(vjust=0.5)) +  text_theme -> plot
+  }
+  if(flip){
+    plot = plot + coord_flip()
+  }
+  }
+    return(plot)
+}
+
+eda_y <- function(data = bank){
+  if(if_plot){
+  data %>% 
+    ggplot(aes(x = y)) + 
+    geom_bar(position = "stack")
+}
+}
+```
+
+### Personal information
+- First Draft
+```{r}
+# if(if_plot){
+# eda_num("age")
+# eda_cata("job")
+# eda_cata("marital")
+# eda_num("education")
+# eda_cata("education", bank%>% mutate(education = factor(education)))
+# eda_cata("default")
+# eda_cata("housing", bank %>% mutate(housing = factor(housing)))
+# eda_cata("loan",bank %>% mutate(loan = factor(loan)))
+# 
+# vcd::mosaic(~ education+housing +y+loan, data = temp, shade = TRUE,
+#             labeling_args = list(abbreviate_labs = c(3, 10, 1)))}
+```
+
+#### Overall visualization
+```{r}
+if(if_plot){
+multiplot(eda_withy("marital"),
+          eda_withy("default"),
+          eda_withy("loan"), 
+          eda_withy("housing"),cols=4)}
+if(if_plot){
+multiplot(
+          eda_withy("job"),
+          eda_withy("education"),cols=2)}
+
+#eda_withy("age")
+```
+
+
+#### Data processing and the reason doing that
+
+##### Replace default==1 as a catogory
+```{r}
+if(if_plot){
+eda_cata("default")
+
+# Test
+## Before:
+bank %>%
+  mutate(default = ifelse(is.na(default),"NA value",default)) -> temp1
+vcd::mosaic(~ default + y, data = temp1, shade = TRUE)
+
+## After:
+bank %>% 
+  mutate(default = ifelse(default=="no" & !is.na(default),"no","other")) -> temp2
+vcd::mosaic(~ default + y, data = temp2, shade = TRUE)
+}
+# Conduct
+bank <- temp2
+
+```
+
+##### Transform education as cordinal variiable
+```{r}
+if(if_plot){
+# Before:
+## Left plot:
+vcd::mosaic(~ education + job, data = bank, shade = TRUE,
+            labeling_args = list(abbreviate_labs = c(4, 3, 1)))
+## Right plot:
+bank %>%
+  group_by(job, education) %>%
+  dplyr::summarise(proportion = n()) %>% ungroup %>%
+  mutate(proportion = proportion/sum(proportion)) %>%
+
+ggplot( aes(x=education, y=job, fill=proportion, label=proportion)) +
+  geom_tile() +
+  scale_fill_gradient(low = "#56B4E922",high = colors[6]) +   theme_pubr(legend="right",x.text.angle = -20) +
+  geom_text(aes(label = paste0(round(proportion*100,2),"%")),color="black", size=3.5) 
+}
+
+# After:
+bank %>% 
+  mutate(education = as.character(revalue(education, 
+      c("professional.course" = 14, "university.degree" = 16, "high.school" = 12,
+      "basic.9y" = 9, "basic.6y" = 6, "basic.4y" = 4, "illiterate" = 1)))) %>%
+  mutate(education = as.numeric(education)) -> temp
+
+if(if_plot){
+ggplot(temp, aes(x = education, y = `job`, fill = ..x..)) +
+  geom_density_ridges_gradient(na.rm=F,scale = 2, rel_min_height = 0.01, gradient_lwd = 0.04) +
+  
+  scale_x_continuous(limits=c(xmin=1,xmax=18),breaks= seq(0, 18, by=1)) +
+  scale_fill_viridis(name = "Year of edu", direction = -1, option = "C") +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(hjust = 0.5))
+  }
+
+# Conduct:
+bank <- temp
+```
+
+##### Marriage: seperate them into yes/noo
+```{r}
+if(if_plot){
+# Before
+temp <- bank
+vcd::mosaic(~ marital + y+education  , data = temp, shade = F,
+            labeling_args = list(abbreviate_labs = c(10, 10, 0)))
+
+vcd::mosaic(~ marital + y+job  , data = temp, shade = F,
+             labeling_args = list(abbreviate_labs = c(10, 10, 1)))
+
+vcd::mosaic(~ marital + y+ housing  , data = temp, shade = F,
+            labeling_args = list(abbreviate_labs = c(10, 10, 1)))
+}
+# After
+bank %>%
+  mutate(marital = revalue(marital, c(
+    'single' = '0',
+    'married' = '1',
+    'divorced'= '1'))) -> temp
+if(if_plot){
+  vcd::mosaic(~ marital + y+education  , data = temp, shade = T,
+            labeling_args = list(abbreviate_labs = c(10, 10, 0)))
+
+vcd::mosaic(~ marital + y+job  , data = temp, shade = T,
+             labeling_args = list(abbreviate_labs = c(10, 10, 1)))
+
+vcd::mosaic(~ marital + y+ housing  , data = temp, shade = T,
+            labeling_args = list(abbreviate_labs = c(10, 10, 1)))
+
+}
+
+# Conduct:
+bank %<>%
+  mutate(marital = revalue(marital, c(
+    'single' = '0',
+    'married' = '1',
+    'divorced'= '1')))
+```
+
+##### Keep age as original format
+```{r}
+# Before:
+if(if_plot){
+ggarrange(
+  eda_cata_num("job","age",x_angle=0),
+  eda_cata_num("education","age",x_angle=0),
+  ncol=1,common.legend = T)
+}
+```
+
+
+### Current campaign event
+
+#### Extract year and month feature
+```{r}
+# Extract year
+year_cur = 2008
+year_col = c()
+flag = 0
+for(x in bank$month){
+  if(x == 'mar' & flag != 1){
+    year_cur = year_cur +1
+    flag = 1
+  }
+  if(x == "apr"){
+    flag = 0
+  }
+  year_col = append(year_col, year_cur)
+}
+bank$year <- year_col
+bank %<>% relocate(year, .before=month)
+
+# Effect Analysis
+bank %<>% 
+  mutate(month = as.character(month)) %>%
+  mutate(month = as.numeric(revalue(month,c('apr'=4, 'aug'=8, 'dec'=12,
+                   "jul"=7,"jun"=6,"mar"=3,"may"=5,"nov"=11,"oct"=10,"sep"=9))))
+
+group = "month"
+
+bank %>% nrow -> bank_nrow
+prop.table(table(bank$y))[2] %>% as.vector() -> average_line
+
+ggarrange(
+  # left plot
+  bank %>% 
+    ggplot(aes(x = !!sym(group), fill = factor(y))) + 
+    geom_bar(position = "stack") + 
+    geom_label(stat = "count", 
+               aes(label = ..count.., y = ..count..),
+               size=3,
+               fill=NA,
+               position = position_dodge(0.9)) +
+    labs(y="number of observations") + ggtitle("Observations") +
+    scale_fill_manual(c("fail", "success"), values =colors,na.value = "#5f5f5f") +
+    scale_x_continuous(limits=c(xmin=1,xmax=12),breaks= seq(0, 12, by=1)) +
+    theme_pubr()+facet_grid(year~.)+ theme(panel.spacing = unit(2, "lines")),
+    
+  # right plot
+  
+  bank %>% 
+    ggplot(aes(x = !!sym(group), fill = factor(y))) + 
+    geom_bar(position = "fill") + ylab("percentage") +
+    labs(y="number of observations") + ggtitle("% of success in Observations") +
+    scale_y_continuous(labels = function(x) paste0(x*100, "%")) +
+    scale_fill_manual(c("fail", "success"), values =colors,na.value = "#5f5f5f") +
+    
+    scale_x_continuous(limits=c(xmin=1,xmax=12),breaks= seq(0, 12, by=1)) +
+    geom_hline(yintercept=average_line, linetype="dashed", color = colors[3]) +
+    theme_pubr()+facet_grid(year~.)+ theme(panel.spacing = unit(2, "lines")),
+  ncol = 2, common.legend = TRUE, legend="right")
+
+```
+
+
+```{r}
+# Add monthly phone calls
+bank %<>% group_by(year,month) %>%
+  mutate(monthly_contacts = n()) %>% ungroup %>%
+  relocate(monthly_contacts, .after = month)
+eda_num("monthly_contacts")
+```
+
+
+#### day_of_week shows no pattern
+```{r}
+# Left plot
+if(if_plot){
+bank %<>% mutate(day_of_week = factor(day_of_week, levels = c("mon","tue","wed","thu","fri")))
+bank %>% yesno_to_10() %>% filter(year<=2009)-> temp
+vcd::mosaic(~ year +day_of_week+month+y  , data = temp, shade = TRUE,
+            labeling_args = list(abbreviate_labs = c(4, 10, 4)))
+
+# Right plot
+group = "day_of_week"
+bank %>% 
+      ggplot(aes(x = !!sym(group), 
+                 fill = y)) + 
+      
+      geom_bar(position = "fill") +
+     scale_y_continuous(labels = function(x) paste0(x*100, "%")) +
+        scale_fill_manual(values =colors,na.value = "#5f5f5f") +facet_grid(month~year) +
+  theme_pubr(legend = "right")
+}
+# Delete day_of_week because it's unstable
+bank %<>% dplyr::select(-day_of_week)
+```
+
+#### Keep contact but delete duration
+```{r}
+if(if_plot){
+eda_cata("contact")
+eda_withy("contact")
+eda_cata_num("contact","duration",flip=T,expand_limits=3,x_angle = 0)
+}
+#bank %<>% dplyr::select(-duration)
+```
+
+### Last campaign
+#### campaign is too discreted so we cut the tail
+```{r}
+cut = quantile(bank$campaign,0.9985)
+bank %>% 
+  mutate(campaign = ifelse(campaign < cut, campaign, cut)) -> temp
+
+ggarrange(
+  eda_num("campaign"),
+  eda_num("campaign",temp),ncol=1,common.legend = T,legend = "right")
+```
+
+#### Delete pdays, as it's not accorded to the campagin
+```{r}
+table(bank$campaign,useNA = "ifany")
+table(bank$pdays,useNA = "ifany")
+bank %<>% select(-pdays)
+```
+
+#### Pick one from previous and poutcome
+```{r}
+table(bank$poutcome,useNA = "ifany")
+table(bank$previous,useNA = "ifany")
+
+# eda_num("previous")
+# eda_cata("poutcome")
+# eda_cata("previous", bank %>% mutate(previous = factor(previous)))
+
+bank %>% 
+  filter(previous>=1) %>% 
+  filter(poutcome!="nonexistent") %>% mutate(poutcome=factor(poutcome)) -> temp
+
+vcd::mosaic(~   previous+y+poutcome  , data = temp , shade = T,
+            gp = gpar(fill = rep(c(colors[1],colors[3]),each=14)),
+            labeling_args = list(abbreviate_labs = c(1, 10, 1)))
+            
+# A stange case of 7 phone but failed, delete it.
+bank %>% filter(previous<7)
+```
+
+
+### Economics
+
+#### Averaging
+```{r}
+subtract_time <- function(df){
+  df %>% group_by(year,month) %>% 
+    select(econs) %>%
+    unique %>%
+    mutate(month=as.character(str_pad(month, width = 2, pad = "0", side = "left"))) %>%
+    mutate(time = paste0(year,"-",month,"-01")) %>%
+    mutate(time = as.Date(time, "%Y-%m-%d"))%>%
+    pivot_longer(econs, names_to = 'type',values_to = 'value')
+}
+# Before
+econs = c("emp.var.rate","cons.price.idx","cons.conf.idx","cons.conf.idx","euribor3m","nr.employed")
+
+bank %>% 
+  subtract_time %>%
+  ggplot(aes(x=time,y=value)) + geom_line(aes(color=type)) + 
+    scale_x_date(date_labels="%Y-%m",date_breaks  ="1 month") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    facet_grid(type~.,scales="free")  -> p1
+
+# After
+bank %>% mutate_at(
+  vars(econs),
+  funs((.-mean(.))/sd(.))) -> temp
+
+temp %>% 
+  subtract_time %>%
+  ggplot(aes(x=time,y=value)) + geom_line(aes(color=type)) + 
+    scale_x_date(date_labels="%Y-%m",date_breaks  ="1 month") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) -> p2
+
+if(if_plot){
+  ggarrange(p1,p2,ncol=2,common.legend = T)
+}
+```
+
+```{r}
+ggarrange(
+eda_num(econs[1]),
+eda_num(econs[2]),
+eda_num(econs[3]),
+eda_num(econs[4]),
+eda_num(econs[5]),ncol=3,nrow=2,common.legend = T,legend.position = "right") 
+```
+
+## Data processing
+```{r}
+bank %<>% yesno_to_10
+```
+
+### Unify data
+```{r}
+bank %<>%
+  # Discrete as factor
+  mutate_if(sapply(bank, is.character), as.factor) %>%
+  # Continuous as numeric
+  mutate_if(sapply(bank, is.integer), as.numeric)
+```
+
+- Output Data
+```{r}
+bank %<>% relocate(year,.before=month)
+```
+
+
+
+### Missing value processing
+
+```{r}
+bank %<>%
+  mutate_if(sapply(bank, is.character), as.factor) %>%
+  mutate_if(sapply(bank, is.integer), as.numeric)
+
+# Delete data that miss one of marital and job, and education.
+bank %<>%
+  filter(!((is.na(marital) | is.na(job)) & is.na(education)))
+
+# Discovery: housing and loan miss the same 990 lines
+bank %>%
+  #filter(is.na(housing)) %>%
+  filter(is.na(housing) | is.na(loan))
+
+# Missing value counting
+report_miss <- function(df){
+  print("lines of missed value")
+  print(table(apply(df, 1, function(x){sum(is.na(x))})))
+  print("Missing value count Table:")
+  apply(df, 2, function(x){sum(is.na(x))}) %>% as.data.frame
+}
+
+report_miss(bank)
+
+bank %<>% mutate(y=as.factor(y))
+```
+
+
+#### Visualize missing value
+- https://www.sohu.com/a/275318909_777125
+
+#### Random Forest Scheme:
+```{r}
+bank_rffixed <- missForest(
+  bank %>% as.data.frame, 
+  verbose = T, ntree = 15,
+  maxiter = 5)
+bank_rffixed <- bank_rffixed$ximp %>% as_tibble
+report_miss(bank_rffixed)
+```
+
+#### Modes Scheme
+```{r}
+treat_temp = c()
+for(i in colnames(bank)){
+  if(NA %in% (bank %>% distinct_at(i) %>% pull(1))){
+    treat_temp %<>% append(i)
+  }
+}
+
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+bank %>% mutate_at(
+  vars(treat_temp),
+  funs(ifelse(is.na(.),Mode(na.omit(.)),.))) -> bank_modefixed
+
+report_miss(bank_modefixed)
+
+```
+
+#### Avering fixed Scheme:
+```{r}
+bank_pmmfixedesult <- mice(bank, m = 10, method='pmm', maxit=3, seed=123)
+bank_pmmfixed <- mice(bank, m = 10, method='pmm', maxit=3, seed=123)
+
+```
+
+## Features visulization:
+```{r}
+#install.packages("corrplot")
+library(corrplot)
+temp = bank_rffixed
+bank %>% dplyr::select(where(is.numeric)) %>%
+  cor() -> cor_matrix
+
+cor_matrix %>% corrplot(method = "ellipse", addCoef.col = "grey")
+
+corrplot(cor_matrix,method = "ellipse",type = "upper") #, tl.pos = "d" #order = "hclust"
+corrplot(cor_matrix,type = "lower",addCoef.col = "grey", method = "square", diag = FALSE)  #,  cl.pos = "n"
+```
+
+```{r}
+inspect_cor(bank, show_plot = TRUE)
+```
+
+## Data Export:
+```{r}
+save(bank, bank_modefixed, bank_rffixed, bank_pmmfixed, file="../data/working/bank.RData")
+```
+
+```{r}
+bank %>% summarise_all(~is.na())
+```
