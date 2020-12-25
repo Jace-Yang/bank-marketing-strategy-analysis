@@ -12,7 +12,7 @@ Hi there! I am Jace. This was my final project of `Categorical Data Analysis` wh
     - and some in-progress data stored in RData format to communicate with my teammates.
 - [images](images) and [tables](tables) output used to write the report
 
-Note: The **[Report](Bank_Marketing_Strategy_Analysis_Chinese_Version.pdf)** is written in Chinese, but it contains some fancy charts I created, so you can still take a look. Also, I will elaborate on the may idea in the following README page. 
+Note: The **[Report](report_chinese.pdf)** is written in Chinese, but it contains some fancy charts I created, so you can still take a look. Also, I will elaborate on the may idea in the following README page. 
 
 ## Goal
 
