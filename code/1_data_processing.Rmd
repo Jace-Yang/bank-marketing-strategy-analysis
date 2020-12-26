@@ -6,10 +6,89 @@ output: html_document
 ---
 - Please use R version of 3.6.1 (2019-07-05)
 
-# Data scheme
+# Environment control
+- You just need to run this chunk once! Before you did this, please check https://rstudio.github.io/renv/articles/renv.html for details using renv package to control package version.
 
 ```{r}
+if(!require("renv")) install.packages("renv")
+
+# initialize a new project
+renv::init() # Choose 2 if you run this line twice
+
 # Install and library the packages
+## Clear the variable and all packages
+rm(list = ls())
+lapply(names(sessionInfo()$otherPkgs), function(pkgs)
+  detach(
+    paste0('package:', pkgs),
+    character.only = T,
+    unload = T,
+    force = T
+  ))
+(.packages())
+
+install.packages("magrittr")
+install.packages("readr")
+install.packages("dplyr")
+install.packages("tidyr")
+install.packages("tidyverse")
+install.packages("openxlsx")
+
+install.packages("purrr")
+install.packages("stringr")
+install.packages("ggplot2")
+install.packages("cowplot")
+install.packages("caret")
+install.packages("cowplot")
+install.packages("corrplot")
+install.packages("DALEX")
+install.packages("DescTools")
+install.packages("doParallel")
+install.packages("GGally")
+install.packages("Rmisc")
+install.packages("PupillometryR")
+install.packages("inspectdf")
+install.packages("vcd")
+install.packages("ggpubr")
+install.packages("ggmosaic")
+install.packages("scales")
+install.packages("ggridges")
+install.packages("viridis")
+
+install.packages("lattice")
+install.packages("MASS")
+install.packages("nnet")
+install.packages("mice")
+install.packages("missForest")
+
+# Avoid package conflict
+select <- dplyr::select
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+summarize <- dplyr::summarize
+
+renv::status()   # check sttatus
+renv::snapshot() # create a lockfile capturing the state of a project's R package dependencies. The lockfile can be used to later restore these project's dependencies as required.
+```
+
+# Data scheme
+
+## Input
+```{r}
+# Restore the package
+## Remove everything except base package
+rm(list = ls())
+lapply(names(sessionInfo()$otherPkgs), function(pkgs)
+  detach(
+    paste0('package:', pkgs),
+    character.only = T,
+    unload = T,
+    force = T
+  ))
+(.packages())
+
+## Restore package we stored in the "Environment control" section.
+renv::restore()
 
 ## For data processing
 if(!require("magrittr")) install.packages("magrittr")
@@ -48,11 +127,7 @@ if(!require("nnet")) install.packages("nnet")
 if(!require("mice")) install.packages("mice")
 if(!require("missForest")) install.packages("missForest")
 
-# Avoid package conflict
-select <- dplyr::select
-mutate <- dplyr::mutate
-summarise <- dplyr::summarise
-summarize <- dplyr::summarize
+(.packages())
 
 # Data Input
 ## Please run setwd("~/yourdir/bank-marketing-strategy-analysis/code") (change yourdir to yours).
