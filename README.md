@@ -1,6 +1,6 @@
 # bank-marketing-strategy-analysis
 
-Hi there! I am Jace. This was my final project of `Categorical Data Analysis` when I major *Applied Statistics* at Central University of Finance and Economics(CUFE) in 2020 fall.
+Hi there! My name is Jace Yang. This was my final project of `Categorical Data Analysis` when I major *Applied Statistics* at Central University of Finance and Economics(CUFE) in 2020 fall.
 - [code](code) contains:
     - [Data Processing](code/1_data_processing.Rmd): Everything before data goes into model. I combined the Exploration Data Analysis with the feature engineering process.
     - [Logistics model](code/2.1_model_logistic_regression.Rmd), [SVM model](code/2.2_model_SVM.Rmd), and [Decision Tree model](code/2.3_model_decision_tree.R) are applied.
